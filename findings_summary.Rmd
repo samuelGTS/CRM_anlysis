@@ -1,0 +1,1367 @@
+---
+title: "Analysis of effectiveness of CRM over 2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+
+if(!require(pacman)) {install.packages("pacman")}
+pacman::p_load(magrittr,tidyr,dplyr, data.table, ggplot2, sysfonts, janitor, modules,
+               survey,readxl,writexl,tibble,jtools,corrplot, MESS, purrr, naniar,
+               readr, ggpol, stringr, reshape2, openxlsx, tidyverse, showtext,
+               ggthemes, gridExtra, stats,npmv,devtools,sp,grid,cowplot,broom,boot,
+               HH,jsonlite,matrixTests,lubridate,tibble,MASS,maptools,err,ggmap,
+               pim,extrafont)
+
+loadfonts()
+
+knitr::opts_chunk$set(fig.width=15, fig.height=8) 
+```
+
+### Research questions
+
+From the literature about CRM (in the private sector) what we should expect from a well-working CRM:
+
+* Almost all complaint should be treated
+* People satisfied with complaint treatment should higher satisfaction overall
+* People unsatisfied with complaint should have a lower satisfaction overall
+
+What does our 2022 data say?
+
+
+### Methodology
+
+In order to measure aid recipients' satisfaction we use expectation confirmation theory. The idea is to compare expectation and perception of aid recipient, the size of gap between expections and perceptions serves as an inverse measure of satisfaction: the smaller the gap, ie the closer perceptions are to expectations, the more satisfied people are.
+
+
+First we calculate a gap between perception and expectation on different topics:
+
+* Information (perception and expectation of information from humanitarian actors)
+* Influence (perception and expectation of influence on decisions from humanitarian actors)
+* Transparency (perception and expectation of shared information from humanitarian actors on how money is used)
+* Fairness (perception and expectation of the fairness of the response)
+* Cover_needs (perception and expectation of how the response covers the essential needs)
+
+The idea is to compare levels of satisfaction across these five indicators and see if there is a difference between the following groups:
+
+* people have knowledge/no knowledge of CRMs
+* people have used/not used CRMs 
+* have received a response/no response
+* have received a positive/negative response
+
+
+
+### CRM objectives
+
+Looking at different SOPs:
+
+#### Joint WFP UNHCR SOP 
+https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&ved=2ahUKEwjn2OO7_OL8AhVmxgIHHWQCC4IQFnoECAwQAQ&url=https%3A%2F%2Fwfp-unhcr-hub.org%2Fwp-content%2Fuploads%2F2022%2F05%2FJoint-feedback-mechanism-SOP-template-2022-04-13.docx&usg=AOvVaw2A31qEb-T769hG1amFRk-H
+
+_The overall objective of the [name of the joint feedback mechanism] is to ensure a coordinated and effective response to community members’ questions, feedback, suggestions, concerns and complaints. More specifically, the joint feedback mechanism aims to:_
+
+_Increase accountability to affected people by making sure that community members are engaged and their voices are heard and systematically acted upon, meaning that programmes are adapted and improved based on the needs and priorities identified by community members._
+
+#### CARE SOP 
+https://www.careemergencytoolkit.org/wp-content/uploads/2019/09/2019-06-CARE-FCM-Guidance.pdf
+_If operated effectively, a feedback and complaint mechanism supports CARE and its partners to meet the organization’s goals, values and commitments by ensuring that:_
+
+* _Initial steps are taken towards redressing power imbalances and we are accountable to those we work with and for – by providing opportunities for participants (of all ages, genders and abilities) and partners to participate in and influence decision-making._
+
+* _Our interventions are relevant and appropriate to participants’ needs and aspirations – by identifying changing needs and inappropriate activities and taking appropriate action._
+
+#### CRS SOP:
+https://www.crs.org/sites/default/files/tools-research/crs_fcrm_guide.pdf
+
+_Accountability FCRMs are one means by which people can claim
+their rights and entitlements. CRS demonstrates its accountability,
+responsiveness and respect by valuing community input, working hard
+to maintain open communication and trust, and taking responsibility
+for decisions and actions taken in partnerships and projects. When staff
+and partners actively seek and prioritize community feedback, this helps
+right power imbalances by enabling local input to shape programs and
+operations._
+
+
+These are the top 3 response to SOP CRM humanitarian in google. From what we can read, a working CRM should therefore particularly drive reduction of gaps in: Influence, Cover_needs and Fairness
+
+```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
+
+### Prepare the dataset
+
+
+# 
+# rm(list = ls())
+# user <-  Sys.info()['user']
+# 
+# gts_folder <- paste0("C:/Users/",user,"/Ground Truth Solutions/")
+# vault_dir <- paste0('C:/Users/', user, '/OneDrive - Ground Truth Solutions/DataSet_test1/') # might need to be changed my vault directory seems differenct
+# 
+# data <- data.frame(matrix(ncol=17,nrow=0))
+# 
+# perception_expectation <- c("perception_cover_needs","perception_informed","perception_influence",
+#                            "perception_fairness","perception_transparency","expect_cover_needs",
+#                            "expect_informed","expect_influence","expect_fairness","expect_transparency")
+# 
+# # DRC
+# data_xlsx <- loadWorkbook(paste0(vault_dir, "/DRC/2022_DRC_ResponseWide.xlsx"))
+# temp <- as.data.frame(readWorkbook(data_xlsx, sheet="data_protected"))
+# 
+# temp <- temp %>% dplyr::select(c(age_group,gender,
+#                                  perception_expectation,
+#                                  complaint_know,filed_complaint_before,
+#                                  complaint_response_satisfaction,
+#                                  complaint_response))  %>%
+#   mutate(country="DRC") %>% rename(complaint=complaint_know)
+# 
+# data <- rbind(data,temp)
+# 
+# # Chad
+# data_xlsx <- loadWorkbook(paste0(vault_dir, "/Chad/2022_Chad_ResponseWide.xlsx"))
+# temp <- as.data.frame(readWorkbook(data_xlsx, sheet="data_protected"))
+# 
+# #colnames(temp)[grepl("complaint",colnames(temp))]
+# 
+# temp <- temp %>% dplyr::select(c(age_group,gender,
+#                                  perception_expectation,complaint,complaint_given,
+#                                  complaint_response_satisfaction,
+#                                  complaint_response))  %>%
+#   mutate(country="Chad") %>% rename(filed_complaint_before=complaint_given)
+# 
+# data <- rbind(data,temp)
+# 
+# # Nigeria
+# data_xlsx <- loadWorkbook(paste0(vault_dir, "2022_Nigeria_CashBarometer.xlsx"))
+# temp <- as.data.frame(readWorkbook(data_xlsx, sheet="data_protected"))
+# 
+# temp <- temp %>% dplyr::select(c(age_group,gender,
+#                                  perception_expectation,cfm_awareness,filed_complaint_before,
+#                                  satisfied_response_complaint,
+#                                  receive_response_complaint))  %>%
+#   mutate(country="Nigeria") %>% rename(complaint_response=receive_response_complaint) %>%
+#   rename(complaint_response_satisfaction=satisfied_response_complaint) %>%
+#   rename(complaint=cfm_awareness)
+# 
+# data <- rbind(data,temp)
+# 
+# # Burkina Faso
+# data_xlsx <- loadWorkbook(paste0(gts_folder, "Burkina Faso - General/2022 - Canada/3. Analysis/Stats/02_data/Burkina_Faso_clean_data.xlsx"))
+# temp <- as.data.frame(readWorkbook(data_xlsx, sheet="Sheet1"))
+# 
+# reality_importance=c("reality_information","importance_information",
+#                      "reality_fairness","importance_fairness",
+#                      "reality_transparency","importance_transparency",
+#                      "reality_participation","importance_participation",
+#                      "reality_relevance","importance_relevance")
+# 
+# colnames(temp)[grepl("cfm",colnames(temp))]
+# 
+# temp <- temp %>% dplyr::select(c(gender,age_group,
+#                                  reality_importance,
+#                                  complaint,complaint_given,
+#                                  complaint_response))  %>%
+#   mutate(country="Burkina Faso") %>% rename(filed_complaint_before=complaint_given) %>%
+#   mutate(complaint_response_satisfaction=NA) %>% # No complaint response satisfaction
+#   rename(perception_informed=reality_information,expect_informed=importance_information) %>%
+#   rename(perception_fairness=reality_fairness,expect_fairness=importance_fairness) %>%
+#   rename(perception_transparency=reality_transparency,expect_transparency=importance_transparency) %>%
+#   rename(perception_influence=reality_participation,expect_influence=importance_participation) %>%
+#   rename(perception_cover_needs=reality_relevance,expect_cover_needs=importance_relevance)
+# 
+# data <- rbind(data,temp)
+# 
+# # CAR
+# 
+# data_xlsx <- loadWorkbook(paste0(gts_folder, "GFFO-Cash Barometer - General/Countries/CAR/3. Data Analysis Visualisation/Round 3 (Q2 2022)/Stats/02_data/CAR_Q3_22_clean_data.xlsx"))
+# temp <- as.data.frame(readWorkbook(data_xlsx, sheet="Sheet1"))
+# 
+# reality_importance=c("reality_information","importance_information",
+#                      "reality_fairness","importance_fairness",
+#                      "reality_transparency","importance_transparency",
+#                      "reality_participation","importance_participation",
+#                      "reality_relevance","importance_relevance")
+# 
+# 
+# temp <- temp %>% dplyr::select(c(gender,age_group,
+#                                  reality_importance,
+#                                  complaint,complaint_given,
+#                                  complaint_response,complaint_response_satisfaction))  %>%
+#   mutate(country="CAR") %>% rename(filed_complaint_before=complaint_given) %>%
+#   mutate(complaint_response_satisfaction=NA) %>% # No complaint response satisfaction
+#   rename(perception_informed=reality_information,expect_informed=importance_information) %>%
+#   rename(perception_fairness=reality_fairness,expect_fairness=importance_fairness) %>%
+#   rename(perception_transparency=reality_transparency,expect_transparency=importance_transparency) %>%
+#   rename(perception_influence=reality_participation,expect_influence=importance_participation) %>%
+#   rename(perception_cover_needs=reality_relevance,expect_cover_needs=importance_relevance)
+# 
+# 
+# data <- rbind(data,temp)
+# 
+# # Somalia
+# data_xlsx <- loadWorkbook(paste0(gts_folder, "GFFO-Cash Barometer - General/Countries/Somalia II/3. Analysis/3. Q3 2022 - Quant/02_data/cb_som_082022_clean_data.xlsx"))
+# temp <- as.data.frame(readWorkbook(data_xlsx, sheet="Sheet1"))
+# 
+# perception_expectation_som <- c("perception_cover_needs","perception_informed","perception_influence",
+#                            "perception_fairness","perception_money","expect_cover_needs",
+#                            "expect_informed","expect_influence","expect_fairness","expect_transparency")
+# 
+# 
+# temp <- temp %>% dplyr::select(c(age_group,gender,
+#                                  perception_expectation,cfm_awareness,filed_complaint_before,
+#                                  satisfied_response_complaint,
+#                                  receive_response_complaint))  %>%
+#   mutate(country="Somalia") %>% rename(complaint_response=receive_response_complaint) %>%
+#   rename(complaint_response_satisfaction=satisfied_response_complaint) %>%
+#   rename(complaint=cfm_awareness)
+# 
+# data <- rbind(data,temp)
+# 
+# # Afghanistan
+# 
+# data_xlsx <- loadWorkbook(paste0(gts_folder, "UN Women Afghanistan - General/3. Data analysis/02_data/Afghanistan_clean_data.xlsx"))
+# temp <- as.data.frame(readWorkbook(data_xlsx, sheet="Sheet1"))
+# 
+# perception_expectation_afg <- c("perception_cover_needs","perception_informed","perception_money",
+#                                 "expect_cover_needs","expect_informed","expect_money")
+# 
+# table(temp$cfm_knowledge)
+# temp$cfm_knowledge <- if_else(temp$cfm_knowledge>6,as.numeric(NA),temp$cfm_knowledge)
+# temp$cfm_knowledge <- if_else(temp$cfm_knowledge<3,0,1)
+# table(temp$cfm_knowledge)
+# 
+# temp <- temp %>% dplyr::select(c(age_group,gender,
+#                                  perception_expectation_afg,cfm_knowledge,
+#                                  cfm_submitted,cfm_response,cfm_response_satisfaction))  %>%
+#   mutate(country="Afghanistan",perception_fairness=NA,expect_fairness=NA,
+#          perception_influence=NA,expect_influence=NA,) %>% rename(complaint_response=cfm_response) %>%
+#   rename(complaint_response_satisfaction=cfm_response_satisfaction) %>%
+#   rename(complaint=cfm_knowledge) %>% rename(filed_complaint_before=cfm_submitted) %>%
+#   rename(perception_transparency=perception_money,expect_transparency=expect_money)
+# 
+# data <- rbind(data,temp)
+# 
+# data$satisfied <- if_else(data$complaint_response_satisfaction>3,1,0)
+# data$unsatisfied <- if_else(data$complaint_response_satisfaction<3,1,0)
+# 
+# # UKRAINE
+# 
+# library(foreign)
+# temp <- read.spss(paste0(gts_folder, "DEC Ukraine - General/3. Data analysis/02_data/DEC_Ukraine_clean_data.sav"),to.data.frame = TRUE)
+# 
+# # recoding of CRM questions
+# # complaint_awareness = complaint take Neutral, Mostly yes and Yes completely as Yes as for Afgha
+# table(temp$complaint_awareness)
+# temp$complaint <- if_else(temp$complaint_awareness %in% c("Neutral","Mostly yes","Yes, completely"),1,0)
+# table(temp$complaint)
+# # complaint_submit = filed_complaint_before  Yes as 1 No as 0 and the rest (only one person as 0)
+# table(temp$complaint_submit)
+# temp$filed_complaint_before <- if_else(temp$complaint_submit=="Yes",1,0)
+# table(temp$filed_complaint_before)
+# # satisfied = complaint satisfaction Rather or Fully satisfied
+# table(temp$complaint_satisfaction)
+# temp$satisfied <- if_else(temp$complaint_satisfaction %in% c("Fully satisfied","Rather satisfied"),1,0)
+# temp$unsatisfied <- if_else(temp$complaint_satisfaction %in% c("Fully dissatisfied","Rather dissatisfied"),1,0)
+# table(temp$satisfied)
+# table(temp$unsatisfied)
+# 
+# 
+# perception_expectation_ukr <- c("perception_relevance","perception_information","perception_transparency",
+#                                 "expectation_relevance","expectation_information",
+#                                 "expectation_transparency",
+#                                 "perception_fairness","perception_participation",
+#                                 "expectation_fairness","expectation_participation")
+# 
+# for (i in perception_expectation_ukr) {
+#   print(paste("############",i,"###############"))
+#   print(table(temp[[i]]))
+#   temp[[i]] <- case_when(temp[[i]]=="Yes, completely" ~ 5,
+#                          temp[[i]]=="Mostly yes" ~ 4,
+#                          temp[[i]]=="Neutral" ~ 3,
+#                          temp[[i]]=="Not really" ~ 2,
+#                          temp[[i]]=="No, not at all" ~ 1,
+#                          TRUE ~ 99)
+#   print(table(temp[[i]]))
+# }
+# 
+# 
+# temp <- temp %>% dplyr::select(c(age_group,gender,
+#                                  perception_expectation_ukr,complaint,
+#                                  filed_complaint_before,satisfied,unsatisfied))  %>%
+#   mutate(country="Ukraine",complaint_response=NA,complaint_response_satisfaction=NA,) %>%
+#   rename(perception_cover_needs=perception_relevance) %>%
+#   rename(expect_cover_needs=expectation_relevance) %>%
+#   rename(perception_informed=perception_information) %>%
+#   rename(expect_informed=expectation_information) %>%
+#   rename(perception_influence=perception_participation) %>%
+#   rename(expect_influence=expectation_participation) %>%
+#   rename(expect_fairness=expectation_fairness) %>%
+#   rename(expect_transparency=expectation_transparency)
+# 
+# data <- rbind(data,temp)
+# 
+# 
+# 
+# 
+# 
+# table(data$country)
+# 
+# 
+# # calculating gaps and putting 99 if gap is below -5 which means perception was 98 or 99
+# for (i in c("cover_needs","informed","influence","fairness","transparency")) { #,"consult","cva_duration","targeting"
+#   print(i)
+#   data[[paste0("gap_",i)]] <- data[[paste0("expect_",i)]]-data[[paste0("perception_",i)]]
+#   data[[paste0("gap_",i)]] <- if_else(data[[paste0("gap_",i)]]<(-5),99,
+#                                       if_else(data[[paste0("gap_",i)]]<0,0,data[[paste0("gap_",i)]]))
+#   data[[paste0("gap_",i)]] <- -data[[paste0("gap_",i)]]
+#   data[[paste0("gap_",i)]] <- if_else(data[[paste0("gap_",i)]]<(-5),99,data[[paste0("gap_",i)]])
+#   print(table(data[[paste0("gap_",i)]]))
+# 
+# }
+# 
+# table(data$age_group)
+# data$age_group <- if_else(grepl("18",data$age_group),"young",if_else(grepl("3",data$age_group),"middle","old"))
+# table(data$age_group)
+# 
+# 
+# write.csv(data,"C:/Users/SamuelMonet/Ground Truth Solutions/Stats - General/CRM_analysis/data_2022.csv")
+# write.csv(data,"C:/Users/SamuelMonet/OneDrive - Ground Truth Solutions/Dokumente/GTS/Taf_parallele/CRM/data_2022.csv")
+# 
+# 
+# 
+  user <-  Sys.info()['user']
+data=read.csv(paste0("C:/Users/", user, "/Ground Truth Solutions/Stats - General/CRM_analysis/data_2022.csv"))
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
+### Complaint knowledge and use general figures
+
+
+
+# Extract per country and in general the number of people in the data set
+# The number of persons knowing the CRM
+# The number of people having raised a concern, the number of answers, the numbers of people satisfied
+# The number of people not satisfied
+
+crm_all=data.frame(matrix(ncol=7,nrow=0))
+colnames(crm_all) <- c("country","All respondents","Aware of the CRM","Already filled a complaint",
+                        "Received a response","Satisfied with the response","Unsatisfied with the response")
+
+
+for (i in c("All but CAR",unique(data$country))) {
+  if (i=="All but CAR") 
+    {df <- data %>% filter(country != "CAR") 
+    } else df <- data %>% filter(country == i)
+  crm <- df %>%
+  dplyr::select(complaint,filed_complaint_before,
+                                      complaint_response,satisfied,unsatisfied) %>%
+                        colSums(na.rm=TRUE)
+  crm <- c(i,nrow(df),crm)
+  names(crm) <- colnames(crm_all)
+  crm_all[i,] <- crm 
+}
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=TRUE, echo=FALSE}
+#### Extraction of regressions data
+
+#----------------------------------
+
+Regressions=data.frame(matrix(ncol=10,nrow=0))
+
+perception <- c(colnames(data)[grepl("gap_",colnames(data))])
+
+colSums(data[,c("complaint","filed_complaint_before","satisfied","unsatisfied")],na.rm=T)
+
+for (question in c("complaint","filed_complaint_before","satisfied","unsatisfied")) {
+  data[[question]] <- as.numeric(data[[question]])
+  data[[question]] <- if_else(is.na(data[[question]]),0,data[[question]])
+  print(unique(data[[question]]))
+}
+
+colSums(data[,c("complaint","filed_complaint_before","satisfied","unsatisfied")])
+
+
+for (question in c("complaint","filed_complaint_before")) {
+  print(question)
+  for (loc in c(unique(data$country),"all")) {
+    print(loc)
+    if (loc=="all") {
+      dv <- c("age_group","gender","country",question)
+      ds_pim <- data %>% dplyr::select(dv, perception,question)
+    } else {
+      dv <- c("age_group","gender",question)
+      ds_pim <- data %>% filter(country==loc) %>% dplyr::select(dv, perception)
+    }
+    
+    ds_pim <- ds_pim %>% dplyr::filter(question>5)
+    
+    if (loc!="Afghanistan") {
+      for (i in seq_along(perception)) {
+        print(i)
+        ds_pim_na<-ds_pim%>%dplyr::select(dv,perception[i]) %>% na.omit() %>%
+          filter(!!sym(perception[i])<90) # removal of 90s values
+
+        text <- paste("Yes: ",sum(ds_pim_na[[question]]),
+                      " No: ",nrow(ds_pim_na)-sum(ds_pim_na[[question]]))
+
+        string <- paste0("factor(%s,ordered = TRUE) ~ ",paste(c(dv),collapse=" + "))
+        mod <- as.formula(sprintf(string, perception[i]))
+        m1.pim <-pim(mod,data=ds_pim_na,na.action = na.exclude) #regression
+        m1.coef <-as.data.frame(summary(m1.pim)[,1:4])
+        m1.coef$quest<-perception[i]
+        m1.coef$country<-loc
+        m1.coef$check <- question
+        m1.coef$text <- text
+        x<-as.data.frame(plogis(summary(m1.pim)[,1]))
+        x <- rownames_to_column(x)
+        m1.coef<-rownames_to_column(m1.coef)
+        m1.coef<-left_join(m1.coef,x, by = "rowname")
+        Regressions<-rbind(m1.coef,Regressions)}
+    } else {
+      for (i in c(1,2,5)) { # As in Afgha we do not have influence and fairness
+        ds_pim_na<-ds_pim%>%dplyr::select(dv,perception[i]) %>% na.omit() %>%
+          filter(!!sym(perception[i])<90)
+
+        text <- paste("Yes: ",sum(ds_pim_na[[question]]),
+                      " No: ",nrow(ds_pim_na)-sum(ds_pim_na[[question]]))
+
+        string <- paste0("factor(%s,ordered = TRUE) ~ ",paste(c(dv),collapse=" + "))
+        mod <- as.formula(sprintf(string, perception[i]))
+        m1.pim <-pim(mod,data=ds_pim_na,na.action = na.exclude) #regression
+        m1.coef <-as.data.frame(summary(m1.pim)[,1:4])
+        m1.coef$quest<-perception[i]
+        m1.coef$country<-loc
+        m1.coef$check <- question
+        m1.coef$text <- text
+        x<-as.data.frame(plogis(summary(m1.pim)[,1]))
+        x <- rownames_to_column(x)
+        m1.coef<-rownames_to_column(m1.coef)
+        m1.coef<-left_join(m1.coef,x, by = "rowname")
+        Regressions<-rbind(m1.coef,Regressions)}
+    }
+  }
+}
+
+# As in CAR and Burkina we have no satisfaction information
+
+for (question in c("satisfied","unsatisfied")) {
+  print(question)
+  for (loc in c(unique(data$country)[unique(data$country)!="CAR"&
+                                     unique(data$country)!="Burkina Faso"],"all")) {
+    print(loc)
+    if (loc=="all") {
+      dv <- c("age_group","gender","country",question)
+      ds_pim <- data %>% dplyr::select(dv, perception,question)
+    } else {
+      dv <- c("age_group","gender",question)
+      ds_pim <- data %>% filter(country==loc) %>% dplyr::select(dv, perception)
+    }
+
+    if (loc!="Afghanistan") {
+      for (i in seq_along(perception)) {
+        print(i)
+        ds_pim_na<-ds_pim%>%dplyr::select(dv,perception[i]) %>% na.omit() %>%
+          filter(!!sym(perception[i])<90) # removal of 90s values
+
+        text <- paste("Yes: ",sum(ds_pim_na[[question]]),
+                      " No: ",nrow(ds_pim_na)-sum(ds_pim_na[[question]]))
+
+        string <- paste0("factor(%s,ordered = TRUE) ~ ",paste(c(dv),collapse=" + "))
+        mod <- as.formula(sprintf(string, perception[i]))
+        m1.pim <-pim(mod,data=ds_pim_na,na.action = na.exclude) #regression
+        m1.coef <-as.data.frame(summary(m1.pim)[,1:4])
+        m1.coef$quest<-perception[i]
+        m1.coef$country<-loc
+        m1.coef$check <- question
+        m1.coef$text <- text
+        x<-as.data.frame(plogis(summary(m1.pim)[,1]))
+        x <- rownames_to_column(x)
+        m1.coef<-rownames_to_column(m1.coef)
+        m1.coef<-left_join(m1.coef,x, by = "rowname")
+        Regressions<-rbind(m1.coef,Regressions)}
+    } else {
+      for (i in c(1,2,5)) { # As in Afgha we do not have influence and fairness
+        ds_pim_na<-ds_pim%>%dplyr::select(dv,perception[i]) %>% na.omit() %>%
+          filter(!!sym(perception[i])<90)
+
+        text <- paste("Yes: ",sum(ds_pim_na[[question]]),
+                      " No: ",nrow(ds_pim_na)-sum(ds_pim_na[[question]]))
+
+        string <- paste0("factor(%s,ordered = TRUE) ~ ",paste(c(dv),collapse=" + "))
+        mod <- as.formula(sprintf(string, perception[i]))
+        m1.pim <-pim(mod,data=ds_pim_na,na.action = na.exclude) #regression
+        m1.coef <-as.data.frame(summary(m1.pim)[,1:4])
+        m1.coef$quest<-perception[i]
+        m1.coef$country<-loc
+        m1.coef$check <- question
+        m1.coef$text <- text
+        x<-as.data.frame(plogis(summary(m1.pim)[,1]))
+        x <- rownames_to_column(x)
+        m1.coef<-rownames_to_column(m1.coef)
+        m1.coef<-left_join(m1.coef,x, by = "rowname")
+        Regressions<-rbind(m1.coef,Regressions)}
+    }
+  }
+}
+
+
+Regressions <- rename(Regressions, 'Pr' = 10, 'pval' = 5) %>%
+  mutate(p_adj =p.adjust(pval, method = "BH", n = length(pval))) %>%
+  mutate(sig = case_when(p_adj >= 0.05  ~ "insignificant",
+                         p_adj < 0.05   ~ "significant"))
+
+
+
+write.csv(Regressions,"C:/Users/SamuelMonet/Ground Truth Solutions/Stats - General/CRM_analysis/regression_data.csv")
+write.csv(Regressions,"C:/Users/SamuelMonet/OneDrive - Ground Truth Solutions/Dokumente/GTS/Taf_parallele/CRM/regression_data.csv")
+Regressions <- read.csv(paste0("C:/Users/", user, "/Ground Truth Solutions/Stats - General/CRM_analysis/regression_data.csv"))
+
+```
+
+
+
+## General data about CRM
+
+
+```{r crm_all,echo=FALSE,message = FALSE,warning = FALSE, echo=FALSE}
+
+crm_plot <- pivot_longer(crm_all,cols=2:7,names_to = "CRM_feat",values_to = "count")
+crm_plot$count <- as.numeric(crm_plot$count)
+
+
+ggplot(crm_plot %>% filter(country=="All but CAR") %>% arrange(count,descending=TRUE) %>% mutate(across(c(2),factor)),
+           aes(x = reorder(CRM_feat, count), y = count)) +
+      geom_bar(aes(x = reorder(CRM_feat, count), y = count),
+               stat = 'identity', show.legend = FALSE, fill = "#537080",width=.4, position = position_dodge(width=.7)) +
+      scale_y_continuous(expand = c(0, 0),
+                          breaks = seq(0,1, 0.1),
+                          labels = seq(0,1, 0.1)*100,
+                          limits = c(0,  1.1*max(crm_plot$count)))+ 
+      geom_text(aes(x = reorder(CRM_feat, count), y = 0,  label = CRM_feat),
+                color = "black", family = "Futura Bk BT", hjust = 0, vjust =0, position = position_nudge(x = 0.35), size = 3) +
+      geom_text(aes(x = reorder(CRM_feat, count), y = count,  label = count),
+                color = "black", family = "Futura Bk BT",
+                hjust =0, vjust =0,
+                position = position_nudge(x = -.1,y=0)
+                , size = 3) +
+      coord_flip() +
+      theme_void()
+
+ggplot(crm_plot %>% filter(country!="All but CAR") %>% arrange(count,descending=TRUE) %>% mutate(across(c(2),factor)),
+           aes(x = reorder(CRM_feat, count), y = count)) +
+      geom_bar(aes(x = reorder(CRM_feat, count), y = count),
+               stat = 'identity', show.legend = FALSE, fill = "#537080",width=.4, position = position_dodge(width=.7)) +
+    facet_wrap(~country) + 
+      scale_y_continuous(expand = c(0, 0),
+                          breaks = seq(0,1, 0.1),
+                          labels = seq(0,1, 0.1)*100,
+                          limits = c(0,  1.1*max(crm_plot$count)))+ 
+      geom_text(aes(x = reorder(CRM_feat, count), y = 0,  label = CRM_feat),
+                color = "black", family = "Futura Bk BT", hjust = 0, vjust =0, position = position_nudge(x = 0.35), size = 3) +
+      geom_text(aes(x = reorder(CRM_feat, count), y = count,  label = count),
+                color = "black", family = "Futura Bk BT",
+                hjust =0, vjust =0,
+                position = position_nudge(x = -.1,y=0)
+                , size = 3) +
+      coord_flip() +
+      theme_void()
+
+```
+Although we can see a lot of differences form one country to another in terms of knowledge of the CRM (In Afghanistan, it can be explained by the fact that interviewed people were not necessary beneficiaries), the proportion of the rest of the answer is quite similar.
+
+First we can see that only about half of the people who complained received a response. This tends to show that the system is not working. In a proper CRM system this figure should be close to 100%.
+
+And out of these responses usualy people tend to be quite satisfied, although this can varies a lot from one country to another. In Somalia people seems to be quite satisfied (over 90% satisfied) while in Chad it is closer to only 60%.
+Based on the theory of the CRM we could expect more positive figures from Somalia and more negative for Chad in relation to the CRM.
+
+
+### Ordered logistic regression using PIM package
+
+The p values for the ordered regression are adjusted to account for false discovery rate (FDR). 'BH' in the p.adjust function corresponds to Benjamini and Hochberg (1995, https://www.jstor.org/stable/2346101) . BY is also a method of correcting for FDR, and seems to be only slightly different. BH is less conservative (shows 10 more variables as significant than the BY correction) but this does not affect the significance of phone_own.
+
+
+
+
+## Do you know about a CRM system?
+
+### Gap in information (Difference between people who know about CRM and people who don't)
+
+```{r information_complaint,echo=FALSE,message = FALSE,warning = FALSE}
+
+Regressions$text <- paste(Regressions$country,Regressions$text,sep="\n")
+
+
+informed_all <- Regressions %>% filter(check=="complaint") %>% filter(country=="all") %>%
+  filter(quest=="gap_informed") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="complaint") %>% filter(country!="all") %>%
+  filter(quest=="gap_informed") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="complaint") %>% 
+  filter(country=="all") %>% filter(quest=="gap_informed") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in transparency (Difference between people who know about CRM and people who don't)
+
+```{r transparency_complaint,echo=FALSE,message = FALSE,warning = FALSE}
+
+informed_all <- Regressions %>% filter(check=="complaint") %>% filter(country=="all") %>%
+  filter(quest=="gap_transparency") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="complaint") %>% filter(country!="all") %>%
+  filter(quest=="gap_transparency") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="complaint") %>% 
+  filter(country=="all") %>% filter(quest=="gap_transparency") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in influence (Difference between people who know about CRM and people who don't)
+
+```{r influence_complaint,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="complaint") %>% filter(country=="all") %>%
+  filter(quest=="gap_influence") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="complaint") %>% filter(country!="all") %>%
+  filter(quest=="gap_influence") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="complaint") %>% 
+  filter(country=="all") %>% filter(quest=="gap_influence") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in fairness (Difference between people who know about CRM and people who don't)
+
+```{r fairness_complaint,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="complaint") %>% filter(country=="all") %>%
+  filter(quest=="gap_fairness") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="complaint") %>% filter(country!="all") %>%
+  filter(quest=="gap_fairness") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="complaint") %>% 
+  filter(country=="all") %>% filter(quest=="gap_fairness") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in Cover Needs (Difference between people who know about CRM and people who don't)
+
+```{r cover_needs_complaint,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="complaint") %>% filter(country=="all") %>%
+  filter(quest=="gap_cover_needs") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="complaint") %>% filter(country!="all") %>%
+  filter(quest=="gap_cover_needs") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="complaint") %>% 
+  filter(country=="all") %>% filter(quest=="gap_cover_needs") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+
+## Have you raised a complaint over the las 6 months?
+
+### Gap in information (Difference between people who raised a complaint and people who didn't)
+
+```{r information_filed_complaint_before,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country=="all") %>%
+  filter(quest=="gap_informed") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country!="all") %>%
+  filter(quest=="gap_informed") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="filed_complaint_before") %>% 
+  filter(country=="all") %>% filter(quest=="gap_informed") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+
+informed_countries
+```
+
+### Gap in transparency (Difference between people who raised a complaint and people who didn't)
+
+```{r transparency_filed_complaint_before,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country=="all") %>%
+  filter(quest=="gap_transparency") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country!="all") %>%
+  filter(quest=="gap_transparency") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="filed_complaint_before") %>% 
+  filter(country=="all") %>% filter(quest=="gap_transparency") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in influence (Difference between people who raised a complaint and people who didn't)
+```{r influence_filed_complaint_before,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country=="all") %>%
+  filter(quest=="gap_influence") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country!="all") %>%
+  filter(quest=="gap_influence") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="filed_complaint_before") %>% 
+  filter(country=="all") %>% filter(quest=="gap_influence") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in fairness (Difference between people who raised a complaint and people who didn't)
+
+```{r fairness_filed_complaint_before,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country=="all") %>%
+  filter(quest=="gap_fairness") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country!="all") %>%
+  filter(quest=="gap_fairness") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="filed_complaint_before") %>% 
+  filter(country=="all") %>% filter(quest=="gap_fairness") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in Cover Needs (Difference between people who raised a complaint and people who didn't)
+
+
+```{r cover_needs_filed_complaint_before,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country=="all") %>%
+  filter(quest=="gap_cover_needs") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="filed_complaint_before") %>% filter(country!="all") %>%
+  filter(quest=="gap_cover_needs") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="filed_complaint_before") %>% 
+  filter(country=="all") %>% filter(quest=="gap_cover_needs") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+## Are you satisfied with the response you received?
+
+### Gap in information (Difference between people satisfied with the response and others)
+
+```{r information_satisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="satisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_informed") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="satisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_informed") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="satisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_informed") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in transparency (Difference between people satisfied with the response and others)
+
+```{r transparency_satisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="satisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_transparency") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="satisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_transparency") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="satisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_transparency") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in influence (Difference between people satisfied with the response and others)
+```{r influence_satisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="satisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_influence") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="satisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_influence") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="satisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_influence") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+
+informed_countries
+```
+
+### Gap in fairness (Difference between people satisfied with the response and others)
+
+```{r fairness_satisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="satisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_fairness") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="satisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_fairness") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="satisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_fairness") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+
+informed_countries
+```
+
+### Gap in Cover Needs (Difference between people satisfied with the response and others)
+
+
+```{r cover_needs_satisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="satisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_cover_needs") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="satisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_cover_needs") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="satisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_cover_needs") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+## Are you unsatisfied with the response you received?
+
+### Gap in information (Difference between people unsatisfied with the response and others)
+
+```{r information_unsatisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="unsatisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_informed") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="unsatisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_informed") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="unsatisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_informed") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+informed_countries
+```
+
+### Gap in transparency (Difference between people unsatisfied with the response and others)
+
+```{r transparency_unsatisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="unsatisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_transparency") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="unsatisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_transparency") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="unsatisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_transparency") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+
+informed_countries
+```
+
+### Gap in influence (Difference between people unsatisfied with the response and others)
+```{r influence_unsatisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="unsatisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_influence") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="unsatisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_influence") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="unsatisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_influence") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+
+informed_countries
+```
+
+### Gap in fairness (Difference between people unsatisfied with the response and others)
+
+```{r fairness_unsatisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="unsatisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_fairness") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="unsatisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_fairness") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="unsatisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_fairness") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+
+informed_countries
+```
+
+### Gap in Cover Needs (Difference between people unsatisfied with the response and others)
+
+
+```{r cover_needs_unsatisfied,echo=FALSE,message = FALSE,warning = FALSE}
+
+
+informed_all <- Regressions %>% filter(check=="unsatisfied") %>% filter(country=="all") %>%
+  filter(quest=="gap_cover_needs") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+informed_countries <- Regressions %>% filter(check=="unsatisfied") %>% filter(country!="all") %>%
+  filter(quest=="gap_cover_needs") %>%
+  ggplot(aes(rowname, Pr - 0.5)) + 
+  geom_bar(aes(fill = sig), position = "dodge", stat="identity") +
+  facet_wrap(~text) + 
+  coord_flip() + 
+  geom_hline(yintercept=0, color = "black") + 
+  scale_fill_manual("", values = c("insignificant" = "#E39399", "significant" = "#94CEBA")) +
+  #theme_tufte(ticks = FALSE, 
+  #            base_family = "Futura Bk BT") +
+  ylab('Probabilistic Index')+ 
+  xlab('')
+
+yes <- Regressions %>% filter(check=="unsatisfied") %>% 
+  filter(country=="all") %>% filter(quest=="gap_cover_needs") %>% dplyr::select(text) %>% pull()
+
+informed_all + ggtitle(paste("All countries ",yes[1]))
+
+
+informed_countries
+```
+
